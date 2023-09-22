@@ -1088,7 +1088,4 @@ typedef enum {
     NOVA_AUDIO_PROFILE_MAX
 } en_nova_audio_profile;
 
-
-
-
 ```

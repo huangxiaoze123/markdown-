@@ -1089,3 +1089,54 @@ typedef enum {
 } en_nova_audio_profile;
 
 ```
+
+十二、音频模块代码存放
+```c++
+    LOGF_LDEBUG(1, "enter Audio push Start!");
+
+    MediumConfig_t push_config_ = {0};
+
+    push_config_.pushSinkConfig.u_config.t_live555.i_baseport = 7554;
+
+    push_config_.pushSinkConfig.u_config.t_live555.e_mode = PUSHSINK_MODE_UNICAST;
+
+    // snprintf(push_config_.pushSinkConfig.u_config.t_live555.t_multParams.str_multIP, sizeof(push_config_.pushSinkConfig.u_config.t_live555.t_multParams.str_multIP), "%s", std::string("239.0.0.1").c_str());
+
+    std::string stream_Url_ = "novatest";
+    snprintf(push_config_.pushSinkConfig.u_config.t_live555.str_Url, sizeof(push_config_.pushSinkConfig.u_config.t_live555.str_Url), "%s", stream_Url_.c_str());
+
+    // 修改audio_push参数
+    push_config_.pushSinkConfig.u_config.t_live555.t_audioParams.i_sampleRate = NOVA_AUDIO_SAMPLE_RATE_44100;
+    push_config_.pushSinkConfig.u_config.t_live555.t_audioParams.i_bitWidth = NOVA_AUDIO_BIT_WIDTH_16;
+    push_config_.pushSinkConfig.u_config.t_live555.t_audioParams.i_chnNum = 2;
+    push_config_.pushSinkConfig.u_config.t_live555.t_audioParams.i_profile = NOVA_AUDIO_PROFILE_LC;
+    push_config_.pushSinkConfig.t_stream.e_encType = StreamEncoderType_AAC;
+
+    LOGF_DEBUG("push_config_.pushSinkConfig.u_config.t_live555.e_mode = [%d]", static_cast<int>(push_config_.pushSinkConfig.u_config.t_live555.e_mode));
+    LOGF_DEBUG("push_config_.pushSinkConfig.u_config.t_live555.i_baseport = [%d]", push_config_.pushSinkConfig.u_config.t_live555.i_baseport);
+    LOGF_DEBUG("push_config_.pushSinkConfig.u_config.t_live555.str_Url = [%s]", push_config_.pushSinkConfig.u_config.t_live555.str_Url);
+    LOGF_DEBUG("push_config_.pushSinkConfig.u_config.t_live555.t_audioParams.i_sampleRate = [%d]", static_cast<int>(push_config_.pushSinkConfig.u_config.t_live555.t_audioParams.i_sampleRate));
+    LOGF_DEBUG("push_config_.pushSinkConfig.u_config.t_live555.t_audioParams.i_bitWidth = [%d]", static_cast<int>(push_config_.pushSinkConfig.u_config.t_live555.t_audioParams.i_bitWidth));
+    LOGF_DEBUG("push_config_.pushSinkConfig.u_config.t_live555.t_audioParams.i_chnNum = [%d]", push_config_.pushSinkConfig.u_config.t_live555.t_audioParams.i_chnNum);
+    LOGF_DEBUG("push_config_.pushSinkConfig.u_config.t_live555.t_audioParams.i_profile = [%d]", static_cast<int>(push_config_.pushSinkConfig.u_config.t_live555.t_audioParams.i_profile));
+    LOGF_DEBUG("push_config_.pushSinkConfig.t_stream.e_encType = [%d]", static_cast<int>(push_config_.pushSinkConfig.t_stream.e_encType));
+
+    // // 创建push模块
+    p_audio_medium_push_ = NovaMediaSystem::getInstance().CreateMedium(PUSHSINK_FACTORY, PushSink_Type_Live555_OnDemand);
+    assert(p_audio_medium_push_);  // 断言p_medium_push不会为空
+
+    ret = p_audio_medium_push_->init(push_config_);
+    if (ret < 0) {
+        LOGF_ERR("init push failed.");
+        NovaMediaSystem::getInstance().destroyMedium(p_audio_medium_push_);
+        p_audio_medium_push_ = nullptr;
+        return;
+    }
+
+    // aenc绑定push
+    if (p_audio_medium_push_) {
+        p_medium_aenc_->bind(p_audio_medium_push_);
+    }
+
+
+```

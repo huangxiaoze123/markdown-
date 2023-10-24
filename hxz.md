@@ -2,7 +2,7 @@
 # 一、虚拟项目的编译
 
 1、配置环境
- `cp -rf env.sample  .env`.
+ `cp -rf env.sample .env`.
  ```c++
 export ENV_DCS2_DEPENDENT=/home/huangxz/dcs2-dependent
  ```
@@ -14,7 +14,7 @@ export ENV_DCS2_DEPENDENT=/home/huangxz/dcs2-dependent
 
 4、再编译encd进程
 
-`sh -x build/build.sh -m encd-p hisi524enc`
+`sh -x build/build.sh -m encd -p hisi524enc`
 
 5、拷贝到板子上
 `/home/huangxz/dcs2-dependent/decenc-cbb/linux-arm32/hisi524enc/Debug`
@@ -1088,55 +1088,483 @@ typedef enum {
     NOVA_AUDIO_PROFILE_MAX
 } en_nova_audio_profile;
 
+
+
+
 ```
 
-十二、音频模块代码存放
+# 十二、dcs项目的学习
+
+## 1、 encd详细设计
+
+encd详细设计主要通过继承`StreamHandler`类，通过继承该类实现各节点(采集、编码、推流、loop)设置责任链，各节点负责处理自己任务，实现责任链整体管理，主要设计如下:
+
+- StreamContext: 提供责任链设置的上下文数据类型，通过将数据各节点控制句柄数据存储在上下文中完成不同模块之间互相调用
+- MediumManager: 提供CBB类的聚合方法，包括获取、设置、获取cbb控制句柄等，提供controller进行使用
+- StreamHandler: 责任链的父类，主要包含责任链的基础结构
+- VideoInputProfile、StreamProfile: 此部分为rpc数据接收处理类，用于接收处理rpc数据
+- VideoHandlerInput、VideoHandlerEncode、VideoHandlerPush、VideoHandlerLoop: 视屏采集、编码、推流、loop实现类，实现责任链中各自业务功能模块
+- AudioHandlerInput、AudioHandlerEncode、AudioHandlerInput: 音频采集、编码、推流实现类，实现责任链中音频各自功能模块
+- GeneralStream: Stream聚合，将video、audio责任链聚合组装，实现整体责任链的构建与管理。
+- Controller: 管理控制整个stream构建
+- Encoder: encode模块控制类构建模块
+- EncoderModule: encode模块加载控制类
+
+
+## 2、类的分析
+
+- GeneralStream
+ 1）视频流、音频流的创建
+ 2）对视频、音频模块的成员定义
+ ```c++
+    private:
+    std::unique_ptr<VideoHandlerInput> video_input_stream_;
+    std::unique_ptr<StreamHandler> video_encode_stream_;
+    std::unique_ptr<VideoHandlerPush> video_push_stream_;
+    std::unique_ptr<StreamHandler> video_loop_stream_;
+
+    std::unique_ptr<StreamHandler> audio_input_stream_;
+    std::unique_ptr<StreamHandler> audio_encode_stream_;
+    std::unique_ptr<StreamHandler> audio_push_stream_;
+
+    std::atomic<bool> hdmi_out_link_status_;
+
+    std::mutex stream_mutex_;  // stream 流程控制锁
+ ```
+
+ ### 2.1 vi
+ - VideoHandlerInput
+  1）存储输入采集模块控制句柄智能指针
+  2）vi模块是否初始化的标志
+  3）vi相关参数的设置函数
 ```c++
-    LOGF_LDEBUG(1, "enter Audio push Start!");
+    bool Handle(StreamContext& ctx, enum CommandType cmd, bool reversed_order = false) override;
+    void CliHandle(CliCmdKey& CliKey, std::ostream& out) override;
 
-    MediumConfig_t push_config_ = {0};
+    bool SetHDCP(const core::Request& req, core::Response& resp) override;
+    bool SetEDID(const core::Request& req, core::Response& resp) override;
+    bool GetEDID(const core::Request& req, core::Response& resp) override;
+    bool SetPriority(const core::Request& req, core::Response& resp) override;
+    bool SetTiming(const core::Request& req, core::Response& resp) override;
 
-    push_config_.pushSinkConfig.u_config.t_live555.i_baseport = 7554;
-
-    push_config_.pushSinkConfig.u_config.t_live555.e_mode = PUSHSINK_MODE_UNICAST;
-
-    // snprintf(push_config_.pushSinkConfig.u_config.t_live555.t_multParams.str_multIP, sizeof(push_config_.pushSinkConfig.u_config.t_live555.t_multParams.str_multIP), "%s", std::string("239.0.0.1").c_str());
-
-    std::string stream_Url_ = "novatest";
-    snprintf(push_config_.pushSinkConfig.u_config.t_live555.str_Url, sizeof(push_config_.pushSinkConfig.u_config.t_live555.str_Url), "%s", stream_Url_.c_str());
-
-    // 修改audio_push参数
-    push_config_.pushSinkConfig.u_config.t_live555.t_audioParams.i_sampleRate = NOVA_AUDIO_SAMPLE_RATE_44100;
-    push_config_.pushSinkConfig.u_config.t_live555.t_audioParams.i_bitWidth = NOVA_AUDIO_BIT_WIDTH_16;
-    push_config_.pushSinkConfig.u_config.t_live555.t_audioParams.i_chnNum = 2;
-    push_config_.pushSinkConfig.u_config.t_live555.t_audioParams.i_profile = NOVA_AUDIO_PROFILE_LC;
-    push_config_.pushSinkConfig.t_stream.e_encType = StreamEncoderType_AAC;
-
-    LOGF_DEBUG("push_config_.pushSinkConfig.u_config.t_live555.e_mode = [%d]", static_cast<int>(push_config_.pushSinkConfig.u_config.t_live555.e_mode));
-    LOGF_DEBUG("push_config_.pushSinkConfig.u_config.t_live555.i_baseport = [%d]", push_config_.pushSinkConfig.u_config.t_live555.i_baseport);
-    LOGF_DEBUG("push_config_.pushSinkConfig.u_config.t_live555.str_Url = [%s]", push_config_.pushSinkConfig.u_config.t_live555.str_Url);
-    LOGF_DEBUG("push_config_.pushSinkConfig.u_config.t_live555.t_audioParams.i_sampleRate = [%d]", static_cast<int>(push_config_.pushSinkConfig.u_config.t_live555.t_audioParams.i_sampleRate));
-    LOGF_DEBUG("push_config_.pushSinkConfig.u_config.t_live555.t_audioParams.i_bitWidth = [%d]", static_cast<int>(push_config_.pushSinkConfig.u_config.t_live555.t_audioParams.i_bitWidth));
-    LOGF_DEBUG("push_config_.pushSinkConfig.u_config.t_live555.t_audioParams.i_chnNum = [%d]", push_config_.pushSinkConfig.u_config.t_live555.t_audioParams.i_chnNum);
-    LOGF_DEBUG("push_config_.pushSinkConfig.u_config.t_live555.t_audioParams.i_profile = [%d]", static_cast<int>(push_config_.pushSinkConfig.u_config.t_live555.t_audioParams.i_profile));
-    LOGF_DEBUG("push_config_.pushSinkConfig.t_stream.e_encType = [%d]", static_cast<int>(push_config_.pushSinkConfig.t_stream.e_encType));
-
-    // // 创建push模块
-    p_audio_medium_push_ = NovaMediaSystem::getInstance().CreateMedium(PUSHSINK_FACTORY, PushSink_Type_Live555_OnDemand);
-    assert(p_audio_medium_push_);  // 断言p_medium_push不会为空
-
-    ret = p_audio_medium_push_->init(push_config_);
-    if (ret < 0) {
-        LOGF_ERR("init push failed.");
-        NovaMediaSystem::getInstance().destroyMedium(p_audio_medium_push_);
-        p_audio_medium_push_ = nullptr;
-        return;
-    }
-
-    // aenc绑定push
-    if (p_audio_medium_push_) {
-        p_medium_aenc_->bind(p_audio_medium_push_);
-    }
+    void Show(std::ostream& out);
+    void Dump(CliDumpOpt& opt, std::ostream& out);
+```
 
 
+- Handle函数的学习
+  1)cmd 类型
+```c++
+    enum class CommandType : uint8_t {
+        kUnknow = 0,
+        kNewStream,
+        kInit,
+        kBind,
+        kUnbind,
+        kTimingAdapt,
+        kRebuildModule,
+    };
+```
+
+- kNewStream
+```c++
+video_input_ = std::make_unique<MediumManager>(VIDEO_INPUT_FACTORY, VideoInput_Type_HISI);
+```
+
+- kInit
+```c++
+MediaDefaultCfg::Instance().ViDefaultCfg(core::EncdDecdVideoParam::VIDEO_0, *video_input_.get());
+video_input_->init();
+```
+
+- kTimingAdapt
+
+- kRebuildModule
+
+ ### 2.2 venc
+- VideoHandlerEncode
+  1）存储编码器控制句柄map
+  2）编码的锁
+  3）cli、参数打印函数、Handle函数的定义
+```c++
+    bool Handle(StreamContext& ctx, enum CommandType cmd, bool reversed_order = false) override;
+    void CliHandle(CliCmdKey& CliKey, std::ostream& out) override;
+
+    void Show(std::ostream& out);
+    void Dump(CliDumpOpt& opt, std::ostream& out);
+
+```
+
+- kNewStream
+  1） 判断是否存在、是否需要进行参数的配置
+  2） `venc_media = std::make_unique<MediumManager>(VENCODER_FACTORY, VideoEncoder_Type_HISI);`
+
+
+- kInit
+  1） 首先进行句柄的非空判断，初始化标志判断
+  2） StreamType类型的判断：kMainStream、kSubStream
+  3） 获取vi的默认参数
+  4） 调用`init()`进行初始化
+  5） 配置是否插入自定义sei帧
+
+- kBind
+  1） `ctx.VI()->bind(it->second->GetMedium());`
+
+- kUnbind
+  1）`ctx.VI()->unbind(it->second->GetMedium());`
+
+
+ ### 2.3 vpush
+
+- VideoHandlerPush
+  1）存储push模块控制句柄map
+  2）cli、参数打印函数、Handle函数的定义
+```c++
+    bool Handle(StreamContext& ctx, enum CommandType cmd, bool reversed_order = false) override;
+    void CliHandle(CliCmdKey& CliKey, std::ostream& out) override;
+
+    void Show(std::ostream& out);
+
+```
+
+- kNewStream
+  1） 进行push_is_alive及need_rebuild的判断
+```c++
+push_media = std::make_unique<MediumManager>(PUSHSINK_FACTORY, PushSink_Type_Live555_OnDemand);
+```
+
+- kInit
+  1）区分主码流/子码流/组播的设置
+  `VideoStreamKeyIsMainStream`、`VideoStreamKeyIsSubStream`、`VideoStreamKeyIsMulticastStream`
+  2）初始化
+  ```c++
+  it->second.get()->init();
+  main_video_unicast_push_->init();
+  ```
+
+- kBind与kUnbind
+```c++
+ctx.Venc()->bind(main_video_unicast_push_->GetMedium());
+ctx.Venc()->unbind(main_video_unicast_push_->GetMedium());
+```
+
+ ### 2.4 vloop
+
+- VideoHandlerLoop
+  1）vo loop模块控制指针存储
+  2）是否初始化的标志
+
+- kNewStream
+```c++
+MediaDefaultCfg::Instance().VoHisiLayerDefaultCfg(vo_layer_cfg);
+video_loop_ = std::make_unique<MediumManager>(VIDEO_OUTPUT_FACTORY, VIDEOOUPUT1_HISI, &vo_layer_cfg);
+```
+
+- kInit
+```c++
+MediaDefaultCfg::Instance().VoHisiDefaultCfg(*video_loop_);
+video_loop_->init();
+```
+
+- kBind/kUnbind
+```c++
+ctx.VI()->bind(video_loop_.get()->GetMedium());
+ctx.VI()->unbind(video_loop_.get()->GetMedium());
+```
+
+
+## 3、音频部分
+
+- AudioHandlerInput
+  1）存储ai模块控制句柄map
+  2）cli、参数打印函数、Handle函数的定义
+```c++
+    bool Handle(StreamContext& ctx, enum CommandType cmd, bool reversed_order = false) override;
+    void CliHandle(CliCmdKey& CliKey, std::ostream& out) override;
+
+    void Show(std::ostream& out);
+    void Dump(CliDumpOpt& opt, std::ostream& out);
+
+```
+
+- AudioHandlerEncode
+  1）aenc模块控制指针map存储
+  2）cli、参数打印函数、Handle函数的定义
+```c++
+    bool Handle(StreamContext& ctx, enum CommandType cmd, bool reversed_order = false) override;
+    void CliHandle(CliCmdKey& CliKey, std::ostream& out) override;
+
+    void Show(std::ostream& out);
+    void Dump(CliDumpOpt& opt, std::ostream& out);
+
+```
+
+- AudioHandlerPush
+  1）存储push模块控制句柄map
+  2）cli、参数打印函数、Handle函数的定义
+```c++
+    bool Handle(StreamContext& ctx, enum CommandType cmd, bool reversed_order = false) override;
+    void CliHandle(CliCmdKey& CliKey, std::ostream& out) override;
+
+    void Show(std::ostream& out);
+
+```
+
+### 3.1 ai
+- AudioHandlerInput
+```c++
+// map存储ai的句柄
+absl::flat_hash_map<AudioEncodeType, std::unique_ptr<MediumManager>> audio_input_map_;
+// Handle函数
+bool Handle(StreamContext& ctx, enum CommandType cmd, bool reversed_order = false) override;
+```
+  1） 在析构函数里进行map的元素清除
+  2） 在Handle函数中根据cmd的类型进行对应的函数操作
+
+- enum CommandType cmd
+```c++
+enum class CommandType : uint8_t {
+        kUnknow = 0,
+        kNewStream,
+        kInit,
+        kBind,
+        kUnbind,
+        kTimingAdapt,
+        kRebuildModule,
+    };
+```
+- kNewStream
+  1）区分音频的类型：kAudioAnalog、kAudioACComany、kAudioCentralControlAnalog
+  2）放到map中
+
+- kInit
+  1）根据ai_name进行ai默认参数的设置及初始化
+  2）ai_name：ALSA_ANALOG_IN、ALSA_ACCOMPANY_IN、ALSA_CENTRAL_CTRL_IN
+```c++
+MediaDefaultCfg::Instance().AiDefaultCfg(ai_name, *it->second.get());
+it->second.get()->init();
+```
+
+
+### 3.2 aenc
+- AudioHandlerEncode
+```c++
+// map存储aenc的句柄
+absl::flat_hash_map<AudioEncodeType, std::unique_ptr<MediumManager>> audio_encode_map_;
+// Handle函数
+bool Handle(StreamContext& ctx, enum CommandType cmd, bool reversed_order = false) override;
+```
+
+- 在Handle函数中根据cmd的类型进行对应的函数操作
+
+- kNewStream
+```c++
+// 如果map中不存在，则进行创建
+encode_media_ = std::make_unique<MediumManager>(AENCODER_FACTORY, AudioEncoder_Type_SOFT);
+
+```
+
+- kInit
+```c++
+// 默认参数初始化
+MediaDefaultCfg::Instance().AencDefaultCfg(*it->second.get());
+
+```
+- kBind/kUnbind
+```c++
+ctx.Ai()->bind(it->second.get()->GetMedium());
+ctx.Ai()->unbind(it->second.get()->GetMedium());
+```
+
+### 3.3 apush
+- AudioHandlerPush
+```c++
+// map存储apush的句柄
+absl::flat_hash_map<AudioEncodeType, std::unique_ptr<MediumManager>> audio_push_map_;
+// Handle函数
+bool Handle(StreamContext& ctx, enum CommandType cmd, bool reversed_order = false) override;
+```
+- 在Handle函数中根据cmd的类型进行对应的函数操作
+
+- kNewStream
+```c++
+// 如果map中不存在，则进行创建
+push_media_ = std::make_unique<MediumManager>(PUSHSINK_FACTORY, PushSink_Type_Live555_OnDemand);
+
+
+```
+
+- kInit
+```c++
+// 根据ai_name进行参数设置并初始化
+MediaDefaultCfg::Instance().ApushDefaultCfg(ai_name, *it->second.get());
+it->second.get()->init();
+
+```
+- kBind/kUnbind
+```c++
+ctx.Aenc()->bind(it->second.get()->GetMedium());
+ctx.Aenc()->unbind(it->second.get()->GetMedium());
+```
+
+## 4、AbstractStreamHandler
+- SetNext
+
+- SetPrevious
+
+- Handle
+
+## 5、StreamHandler
+- SetNext
+
+- SetPrevious
+
+- Handle
+
+## 6、StreamContext
+
+- 设置上下文中的vi、venc、push、loop控制handle
+
+- 获取上下文中的vi、venc、push、loop控制handle
+
+- 获取当前链流程key、设置当前链处理key
+
+- 当前设置key是设置主码流、子码流、组播、单播
+
+- 设置audio 的ai、aenc、apush 输入media控制handle
+
+- 获取上下文中的ai、aenc、apush
+
+- GetAudioStreamKey、SetAudioStreamKey
+
+- GetEncConfig、SetEncConfig
+
+- GetPushMultIp、SetPushMultIp
+
+- GetLoopHdmiOutLinkStatus、SetLoopHdmiOutLinkStatus
+
+- SetTimingParam、GetTimingParam
+
+## 7、MediumManager
+
+- SetCfg
+
+- SetLayerCfg
+
+
+
+
+![程序组件描述](./assets/encd-class-design.png)
+
+# 十三、 lambda表达式
+
+## 1、格式
+
+- lambda表达式书写格式： [capture-list] (parameters) mutable -> return-type { statement
+}
+
+## 2、表达式各部分说明
+
+- （1）[capture-list] : 捕捉列表，该列表总是出现在lambda函数的开始位置， 编译器根据[]来
+判断接下来的代码是否为lambda函数， 捕捉列表能够捕捉上下文中的变量供lambda 函数使用。
+捕捉的参数都是自带const的，想要去掉const属性可以用mutable，但是捕捉的对象(变量)仍是一份拷贝，外部的a，b无法被修改，所以mutable 很少用，意义不大，不如用 [&]引用捕捉 ( )引用传参
+ 
+- （2）(parameters)：参数列表。与 普通函数的参数列表一致，如果不需要参数传递，则可以
+连同()一起省略。所传参数和捕捉参数不一样，不自带const，可以修改
+ 
+- （3）mutable： 默认情况下，lambda函数总是一个const函数，mutable可以取消其常量
+性。 使用该修饰符时，参数列表不可省略(即使参数为空时，也要带上小括号)。mutable 只是让传值捕捉变量const属性去掉了，但是捕捉的a，b仍是拷贝，外部的a，b无法被修改，所以mutable 很少用，意义不大
+ 
+- （4） ->returntype：返回值类型。用 追踪返回类型形式声明函数的返回值类型，没有返回
+值时此部分可省略。 返回值类型明确情况下，也可省略，由编译器对返回类型进行推 导。
+ 
+- （5） {statement}：函数体。在该函数体内，除了可以使用其参数外，还可以使用所有捕获
+到的变量。
+ 
+- 注意：
+在lambda函数定义中， 参数列表和返回值类型都是可省略部分，而捕捉列表和函数体可以为
+空，但不可省略，因此C++11中 最简单的lambda函数为：[]{}; 该lambda函数不能做任何事情。
+
+
+# 十四、内存块与内存池
+
+- 1、 nova_blk_stru_t提供平台类型和接口
+```c++
+struct nova_blk_stru_t {
+    nova_memory_type_e e_memory_type;  // 平台类型
+    nova_blk_vtable const* p_table;    // 接口
+};
+```
+- 2、接口表
+```c++
+typedef struct
+{
+    uint64_t (*get_size)(nova_blk_t* p_blk);
+    void* (*get_viraddr)(nova_blk_t* p_blk);
+    uint64_t (*get_phyaddr)(nova_blk_t* p_blk);
+    int (*add_meta_data)(nova_blk_t* p_blk, void* p_meta);         // 仅nvbuff跟al_buff支持
+    int (*remove_meta_data)(nova_blk_t* p_blk, void* p_meta);      // 仅nvbuff跟al_buff支持
+    void* (*get_meta_data)(nova_blk_t* p_blk, uint8_t meta_type);  // 仅nvbuff跟al_buff支持
+    int (*get_blk_name)(nova_blk_t* p_blk, int8_t* name, int name_size);
+    void (*destroy)(nova_blk_t* p_blk);
+} nova_blk_vtable;
+```
+
+- 3、rk的内存块
+```c++
+typedef struct nova_rockchip_blk_stru_t {
+    nova_blk_private_data_t nova_blk;
+    /*nubuff私有数据*/
+    bool b_need_alloc;                   // 实体是否需要申请
+    MB_BLK s_rkblk;                      // rk blk 实体
+    char str_mmb_name[NAME_MAX];         // mmb名称
+    char str_zone_name[NAME_MAX];        // zone名称
+    nova_blk_remap_type_e e_remap_type;  // 内存分配方式
+} nova_rockchip_blk_t;
+
+typedef struct nova_blk_private_data_stru_t {
+    nova_blk_t s_pub_blk;
+    char str_blk_name[NAME_MAX];  // blk名字
+    /*公共私有数据*/
+    int32_t i_ref_count;                    // 引用计数
+    NovaBLK_RefCount_CallBack* f_callback;  // 引用计数为0调用的回调函数
+    void* p_unref_callback_data;            // 计数为0，回调函数参数
+    pthread_mutex_t blk_mutex;              // 互斥锁
+
+    void* p_pri_data;        // 私有数据，由模块内部释放
+    size_t p_pri_data_size;  // 私有数据，内存空间大小
+    void* p_usr_data;        // 用户数据
+} nova_blk_private_data_t;
+
+struct nova_blk_stru_t {
+    nova_memory_type_e e_memory_type;  // 平台类型
+    nova_blk_vtable const* p_table;    // 接口
+};
+
+```
+1、共用同个首地址
+
+2、类型转换`nova_rockchip_blk_t* p_rk_blk = (nova_rockchip_blk_t*)p_blk;`，就可以使用到接口函数
+   `nova_blk_private_data_t* p_private_blk = (nova_blk_private_data_t*)p_blk;`
+
+- 4、引用计数
+```c++
+void nova_blk_ref(nova_blk_t* p_blk);
+void nova_blk_unref(nova_blk_t* p_blk);
+
+// nova_blk_private_data_stru_t
+int32_t i_ref_count;                    // 引用计数
+NovaBLK_RefCount_CallBack* f_callback;  // 引用计数为0调用的回调函数
+void* p_unref_callback_data;            // 计数为0，回调函数参数
+```
+
+4、1 当引用次数为0时，将调用回调函数，进行内存块的
+
+- 5、是否需要申请实体
+```c++
+bool b_need_alloc;                   // 实体是否需要申请
+p_hisi_blk->phys_addr = p_blk_config->s_blk_entity.hisiblk.p_phys_addr;       // 指定实体
+// 该实体存在时，则不需要申请，只需要包装一层nova_blk
+ret = ss_mpi_sys_mmz_alloc((td_phys_addr_t*)&phys_addr, (td_void**)&vir_addr, p_hisi_blk->str_mmb_name, p_hisi_blk->str_zone_name, p_blk_config->i_blk_size);
+ret = RK_MPI_SYS_Malloc(&mb_blk, p_blk_config->i_blk_size);
 ```

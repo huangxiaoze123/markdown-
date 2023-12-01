@@ -125,7 +125,7 @@ int init_vs(NovaMedium* video_split, MediumConfig_t& vs_config) {
         return vs_ret;
     }
     // 默认参数配置
-    vs_config.videoSplitConfig.u_config.yuv_split_config.platform_index = 0;
+    // vs_config.videoSplitConfig.u_config.yuv_split_config.platform_index = 0;
     vs_config.videoSplitConfig.u_config.yuv_split_config.src_width = 1920;
     vs_config.videoSplitConfig.u_config.yuv_split_config.src_height = 1080;
     vs_config.videoSplitConfig.u_config.yuv_split_config.e_dst_pixel_format = NOVA_FORMAT_YUV420SP; /* 源YUV像素格式*/
@@ -133,8 +133,8 @@ int init_vs(NovaMedium* video_split, MediumConfig_t& vs_config) {
     std::string str_bin_file_name = "/userdata/hxz/rk3568/Debug/bin/rgb888toyuv420.bin";
     snprintf(vs_config.videoSplitConfig.u_config.yuv_split_config.kernel_bin_file_name, sizeof(vs_config.videoSplitConfig.u_config.yuv_split_config.kernel_bin_file_name), "%s", str_bin_file_name.c_str());
 
-    std::string str_sym_name = "yuv444toyuv420";
-    snprintf(vs_config.videoSplitConfig.u_config.yuv_split_config.kernel_sym_name, sizeof(vs_config.videoSplitConfig.u_config.yuv_split_config.kernel_sym_name), "%s", str_sym_name.c_str());
+    // std::string str_sym_name = "yuv444toyuv420";
+    // snprintf(vs_config.videoSplitConfig.u_config.yuv_split_config.kernel_sym_name, sizeof(vs_config.videoSplitConfig.u_config.yuv_split_config.kernel_sym_name), "%s", str_sym_name.c_str());
 
     vs_ret = video_split->init(vs_config);
     if (vs_ret != 0) {
@@ -205,6 +205,8 @@ void threadFunction(NovaMedium* video_file_input) {
         if (!p_ret) {
             ERRPRINTF("bind fail");
             return;
+        } else {
+            DEBUGPRINTF("video_file_input bind video_split succeed");
         }
 
         video_file_input->start();
@@ -227,11 +229,19 @@ void threadFunction(NovaMedium* video_file_input) {
         if (u_ret != 0) {
             ERRPRINTF("vi unbind fail");
             return;
+        } else {
+            DEBUGPRINTF("video_file_input unbind video_split succeed");
         }
 
         // 销毁
         if (video_split) {
-            NovaMediaSystem::getInstance().destroyMedium(video_split);
+            ret = NovaMediaSystem::getInstance().destroyMedium(video_split);
+            if (ret < 0) {
+                ERRPRINTF("video_split destroyMedium fail");
+                return;
+            } else {
+                DEBUGPRINTF("destroyMedium video_split succeed");
+            }
             video_split = nullptr;
         }
 

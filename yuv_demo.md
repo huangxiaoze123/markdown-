@@ -58,10 +58,10 @@ int init_vi(NovaMedium* video_input, MediumConfig_t& vi_config) {
     DEBUGPRINTF("video_input is %p", video_input);
     DEBUGPRINTF("start.");
     int vi_ret = -1;
-    if (!video_input) {
-        ERRPRINTF("video_input is nullptr");
-        return vi_ret;
-    }
+    int width = vi_config.videoInputConfig.s_vi_interface_para.default_resolution.i_width;
+    int height = vi_config.videoInputConfig.s_vi_interface_para.default_resolution.i_height;
+    int fps = vi_config.videoInputConfig.s_vi_interface_para.default_resolution.f_fps;
+    DEBUGPRINTF("width is %d, height is %d, fps is %d", width, height, fps);
     // 默认参数配置
     vi_config.videoInputConfig.s_dev_attr.e_intf_mode = NOVA_VI_MODE_BT656;       // 接口模式
     vi_config.videoInputConfig.s_dev_attr.e_work_mode = NOVA_VI_WORK_1MULTIPLEX;  // 工作模式
@@ -72,11 +72,11 @@ int init_vi(NovaMedium* video_input, MediumConfig_t& vi_config) {
 
     vi_config.videoInputConfig.s_chn_attr.s_cap_rect.i_x = 0;  // x,y坐标
     vi_config.videoInputConfig.s_chn_attr.s_cap_rect.i_y = 0;
-    vi_config.videoInputConfig.s_chn_attr.s_dst_size.i_width = 1920;  // 宽高
-    vi_config.videoInputConfig.s_chn_attr.s_dst_size.i_height = 1080;
+    vi_config.videoInputConfig.s_chn_attr.s_dst_size.i_width = width;  // 宽高
+    vi_config.videoInputConfig.s_chn_attr.s_dst_size.i_height = height;
     vi_config.videoInputConfig.s_chn_attr.e_pix_format = NOVA_FORMAT_YUV444SP;  // format 24
-    vi_config.videoInputConfig.s_chn_attr.f_src_framerate = 30;                 // 原始帧率
-    vi_config.videoInputConfig.s_chn_attr.f_dst_framerate = 30;                 // 输出帧率
+    vi_config.videoInputConfig.s_chn_attr.f_src_framerate = fps;                // 原始帧率
+    vi_config.videoInputConfig.s_chn_attr.f_dst_framerate = fps;                // 输出帧率
 
     std::string dev_name = "/dev/video20";
     vi_config.videoInputConfig.p_open_dev_name = const_cast<char*>(dev_name.c_str());  // 打开节点的名字
@@ -90,14 +90,14 @@ int init_vi(NovaMedium* video_input, MediumConfig_t& vi_config) {
     vi_config.videoInputConfig.s_vi_interface_para.e_interface_specs = EN_SPECS_2K1K;          // 0
     std::string p_edid_name = "HDMI1.3";
     vi_config.videoInputConfig.s_vi_interface_para.p_edid_name = const_cast<char*>(p_edid_name.c_str());
-    vi_config.videoInputConfig.s_vi_interface_para.default_resolution.i_width = 1920;
-    vi_config.videoInputConfig.s_vi_interface_para.default_resolution.i_height = 1080;
-    vi_config.videoInputConfig.s_vi_interface_para.default_resolution.f_fps = 30;
+    // vi_config.videoInputConfig.s_vi_interface_para.default_resolution.i_width = 1920;
+    // vi_config.videoInputConfig.s_vi_interface_para.default_resolution.i_height = 1080;
+    // vi_config.videoInputConfig.s_vi_interface_para.default_resolution.f_fps = 30;
     vi_config.videoInputConfig.s_vi_interface_para.default_resolution.e_pix = NOVA_FORMAT_YUV444SP;  // 24
 
     nova_memory_pool_config_t st_nova_buf = {0};
-    st_nova_buf.i_blk_size = 10485760;  // 内存块大小
-    st_nova_buf.i_blk_cnt = 2;          // 内存块数量
+    st_nova_buf.i_blk_size = width * height * 3 * 2;  // 内存块大小
+    st_nova_buf.i_blk_cnt = 2;                        // 内存块数量
     std::string str_name;
     snprintf(st_nova_buf.str_name, sizeof(st_nova_buf.str_name), "%s", str_name.c_str());
     st_nova_buf.e_remap_mode = NOVA_REMAP_MODE_NONE;    // 内核态虚拟地址映射模式   0
@@ -125,16 +125,13 @@ int init_vs(NovaMedium* video_split, MediumConfig_t& vs_config) {
         return vs_ret;
     }
     // 默认参数配置
-    vs_config.videoSplitConfig.u_config.yuv_split_config.platform_index = 0;
-    vs_config.videoSplitConfig.u_config.yuv_split_config.src_width = 1920;
-    vs_config.videoSplitConfig.u_config.yuv_split_config.src_height = 1080;
+
+    // vs_config.videoSplitConfig.u_config.yuv_split_config.src_width = 1920;
+    // vs_config.videoSplitConfig.u_config.yuv_split_config.src_height = 1080;
     vs_config.videoSplitConfig.u_config.yuv_split_config.e_dst_pixel_format = NOVA_FORMAT_YUV420SP; /* 源YUV像素格式*/
 
     std::string str_bin_file_name = "/userdata/hxz/rk3568/Debug/bin/rgb888toyuv420.bin";
     snprintf(vs_config.videoSplitConfig.u_config.yuv_split_config.kernel_bin_file_name, sizeof(vs_config.videoSplitConfig.u_config.yuv_split_config.kernel_bin_file_name), "%s", str_bin_file_name.c_str());
-
-    std::string str_sym_name = "yuv444toyuv420";
-    snprintf(vs_config.videoSplitConfig.u_config.yuv_split_config.kernel_sym_name, sizeof(vs_config.videoSplitConfig.u_config.yuv_split_config.kernel_sym_name), "%s", str_sym_name.c_str());
 
     vs_ret = video_split->init(vs_config);
     if (vs_ret != 0) {
@@ -155,12 +152,12 @@ int init_fileout(NovaMedium* video_file_output, MediumConfig_t& vo_config) {
     }
     // 默认参数配置
     memset(&vo_config.voConfig, 0, sizeof(VOutputConfig_t));
-    vo_config.voConfig.t_resolution.height = 1080;
-    vo_config.voConfig.t_resolution.width = 3840;
-    vo_config.voConfig.f_fps = 30;
+    // vo_config.voConfig.t_resolution.height = 1080;
+    // vo_config.voConfig.t_resolution.width = 3840;
+    // vo_config.voConfig.f_fps = 30;
 
     memset(vo_config.voConfig.u_eachConfig.t_localFile.str_fileName, 0, 255);
-    std::string str_vfile_name = "yuv420_dev20_test.yuv";
+    std::string str_vfile_name = "yuv420_4k30_test.yuv";
     snprintf(vo_config.voConfig.u_eachConfig.t_localFile.str_fileName, 255, "%s", str_vfile_name.c_str());
     vo_ret = video_file_output->init(vo_config);
     if (vo_ret != 0) {
@@ -172,7 +169,7 @@ int init_fileout(NovaMedium* video_file_output, MediumConfig_t& vo_config) {
     return vo_ret;
 }
 
-void threadFunction(NovaMedium* video_file_input) {
+void threadFunction(NovaMedium* video_file_input, int width, int height, int fps) {
     int ret = -1;
     MediumConfig_t vs_config = {0};
     MediumConfig_t vo_config = {0};
@@ -186,6 +183,8 @@ void threadFunction(NovaMedium* video_file_input) {
         DEBUGPRINTF("start.");
         // vs 初始化
         NovaMedium* video_split = NovaMediaSystem::getInstance().CreateMedium(VIDEO_SPLIT_FACTORY, VIDEOSPLIT_YUV);
+        vs_config.videoSplitConfig.u_config.yuv_split_config.src_width = width;
+        vs_config.videoSplitConfig.u_config.yuv_split_config.src_height = height;
 
         ret = init_vs(video_split, vs_config);
         if (ret != 0) {
@@ -195,6 +194,9 @@ void threadFunction(NovaMedium* video_file_input) {
 
         // init_fileout 初始化
         NovaMedium* video_file_output = NovaMediaSystem::getInstance().CreateMedium(FILEOUTPUT_FACTORY, FileOutput_Type_OriginalFile);
+        vo_config.voConfig.t_resolution.height = height;
+        vo_config.voConfig.t_resolution.width = width * 2;
+        vo_config.voConfig.f_fps = fps;
 
         ret = init_fileout(video_file_output, vo_config);
         if (ret != 0) {
@@ -202,68 +204,41 @@ void threadFunction(NovaMedium* video_file_input) {
             return;
         }
 
-        // bind
-        // if (!video_file_input && !video_split) {
-        //     auto p_ret = video_file_input->bind(video_split);
-        //     if (!p_ret) {
-        //         ERRPRINTF("bind fail");
-        //         return;
-        //     }
-        // } else {
-        //     ERRPRINTF("video_file_input or video_split is nullptr");
-        //     return;
-        // }
         if (video_file_input == nullptr) {
-            ERRPRINTF("init_fileout fail");
+            ERRPRINTF("init_fileout nullptr");
             return;
         }
         if (video_split == nullptr) {
-            ERRPRINTF("video_split fail");
+            ERRPRINTF("video_split nullptr");
             return;
         }
         auto p_ret = video_file_input->bind(video_split);
         if (!p_ret) {
             ERRPRINTF("bind fail");
             return;
+        } else {
+            DEBUGPRINTF("video_file_input bind video_split succeed");
         }
-        // bind
-        // if (!video_split && !video_file_output) {
-        //     auto p_ret = video_split->bind(video_file_output);
-        //     if (!p_ret) {
-        //         ERRPRINTF("bind fail");
-        //         return;
-        //     }
-        // } else {
-        //     ERRPRINTF("video_split or video_file_output is nullptr");
-        //     return;
-        // }
 
         if (video_file_output == nullptr) {
-            ERRPRINTF("video_file_output fail");
+            ERRPRINTF("video_file_output nullptr");
             return;
         }
         auto p_ret1 = video_split->bind(video_file_output);
         if (!p_ret1) {
-            ERRPRINTF("bind fail");
+            ERRPRINTF("video_file_output bind fail");
             return;
+        } else {
+            DEBUGPRINTF("video_split bind video_file_output succeed");
         }
 
         video_file_input->start();
 
-        usleep(1 * 2000 * 1000);
+        usleep(10 * 2000 * 1000);
 
-        video_file_input->stop();
+        // video_file_input->stop();
 
         // 解绑
-        // if (!video_file_input && !video_split) {
-        //     auto u_ret = video_file_input->unbind(video_split);
-        //     if (u_ret != 0) {
-        //         ERRPRINTF("vi unbind fail");
-        //         return;
-        //     }
-        // } else {
-        //     ERRPRINTF("video_file_input or video_split is nullptr");
-        // }
 
         if (video_file_input == nullptr) {
             ERRPRINTF("video_file_input is nullptr");
@@ -277,37 +252,47 @@ void threadFunction(NovaMedium* video_file_input) {
         if (u_ret != 0) {
             ERRPRINTF("vi unbind fail");
             return;
+        } else {
+            DEBUGPRINTF("video_file_input unbind video_split succeed");
         }
-        // vs 与 file out解绑
-        // if (!video_split && !video_file_output) {
-        //     auto u_ret = video_split->unbind(video_file_output);
-        //     if (u_ret != 0) {
-        //         ERRPRINTF("vs unbind fail");
-        //         return;
-        //     }
-        // } else {
-        //     ERRPRINTF("video_split or video_file_output is nullptr");
-        // }
+
         if (video_file_output == nullptr) {
-            ERRPRINTF("video_file_output is nullptr");
+            ERRPRINTF("video_split is nullptr");
             return;
         }
         auto u_ret1 = video_split->unbind(video_file_output);
-        if (u_ret != 0) {
+        if (u_ret1 != 0) {
             ERRPRINTF("vs unbind fail");
             return;
+        } else {
+            DEBUGPRINTF("video_split unbind video_file_output succeed");
         }
 
         // 销毁
         if (video_split) {
-            NovaMediaSystem::getInstance().destroyMedium(video_split);
+            ret = NovaMediaSystem::getInstance().destroyMedium(video_split);
+            if (ret < 0) {
+                ERRPRINTF("video_split destroyMedium fail");
+                return;
+            } else {
+                DEBUGPRINTF("destroyMedium video_split succeed");
+            }
             video_split = nullptr;
         }
+
         if (video_file_output) {
-            NovaMediaSystem::getInstance().destroyMedium(video_file_output);
+            ret = NovaMediaSystem::getInstance().destroyMedium(video_file_output);
+            if (ret < 0) {
+                ERRPRINTF("video_file_output destroyMedium fail");
+                return;
+            } else {
+                DEBUGPRINTF("destroyMedium video_file_output succeed");
+            }
             video_file_output = nullptr;
         }
+
         DEBUGPRINTF("end.");
+        break;
     }
     return;
 }
@@ -315,6 +300,8 @@ void threadFunction(NovaMedium* video_file_input) {
 int init_filein(NovaMedium* video_file_input, MediumConfig_t& vifile_config) {
     DEBUGPRINTF("start.");
     int vf_ret = -1;
+    int width = vifile_config.vInputConfig.t_resolution.width;
+    int height = vifile_config.vInputConfig.t_resolution.height;
     if (!video_file_input) {
         ERRPRINTF("video_file_input is nullptr");
         return vf_ret;
@@ -327,8 +314,8 @@ int init_filein(NovaMedium* video_file_input, MediumConfig_t& vifile_config) {
     std::string filename = "yuv444_1080p30.yuv";  // 1920_nv24_video20  // yuv444_dev20
     snprintf(vifile_config.vInputConfig.filename, 256, "%s", filename.c_str());
 
-    vifile_config.vInputConfig.t_resolution.height = 1080;
-    vifile_config.vInputConfig.t_resolution.width = 1920;
+    // vifile_config.vInputConfig.t_resolution.height = 1080;
+    // vifile_config.vInputConfig.t_resolution.width = 1920;
     vifile_config.vInputConfig.u_eachConfig.t_local.loopNum = 0;
     vifile_config.vInputConfig.e_pixfmt = NOVA_FORMAT_YUV444SP;
 
@@ -353,6 +340,9 @@ int init_filein(NovaMedium* video_file_input, MediumConfig_t& vifile_config) {
 
 int main(int argc, char** argv) {
     int ret = -1;
+    int width = 3840;
+    int height = 2160;
+    int fps = 60;
     // 系统初始化
     NovaMediaSystem::NovaMediaSystemConfig_t config;
     config.is_init_opencl = true;
@@ -362,6 +352,9 @@ int main(int argc, char** argv) {
     // vi
     NovaMedium* video_input = NovaMediaSystem::getInstance().CreateMedium(VIDEO_INPUT_FACTORY, VideoInput_Type_RK356X);
     MediumConfig_t vi_config = {0};
+    vi_config.videoInputConfig.s_vi_interface_para.default_resolution.i_width = width;
+    vi_config.videoInputConfig.s_vi_interface_para.default_resolution.i_height = height;
+    vi_config.videoInputConfig.s_vi_interface_para.default_resolution.f_fps = fps;
 
     // vi 创建及初始化
     DEBUGPRINTF("video_input is %p", video_input);
@@ -385,14 +378,14 @@ int main(int argc, char** argv) {
     // DEBUGPRINTF("2 video_file_input is %p", video_file_input);
 
     // 创建两条线程
-    std::thread Thread1(threadFunction, video_input);  // 创建新线程，并指定线程函数为 threadFunction
-    std::thread Thread2(threadFunction, video_input);  // 创建新线程，并指定线程函数为 threadFunction
-    std::thread Thread3(threadFunction, video_input);  // 创建新线程，并指定线程函数为 threadFunction
-    std::thread Thread4(threadFunction, video_input);  // 创建新线程，并指定线程函数为 threadFunction
-    Thread1.join();                                    // 等待新线程执行完毕
-    Thread2.join();                                    // 等待新线程执行完毕
-    Thread3.join();                                    // 等待新线程执行完毕
-    Thread4.join();                                    // 等待新线程执行完毕
+    std::thread Thread1(threadFunction, video_input, width, height, fps);  // 创建新线程，并指定线程函数为 threadFunction
+    // std::thread Thread2(threadFunction, video_input);  // 创建新线程，并指定线程函数为 threadFunction
+    // std::thread Thread3(threadFunction, video_input);  // 创建新线程，并指定线程函数为 threadFunction
+    // std::thread Thread4(threadFunction, video_input);  // 创建新线程，并指定线程函数为 threadFunction
+    Thread1.join();  // 等待新线程执行完毕
+    // Thread2.join();                                    // 等待新线程执行完毕
+    // Thread3.join();                                    // 等待新线程执行完毕
+    // Thread4.join();                                    // 等待新线程执行完毕
 
     // 退出
     // if (!NovaMediaSystem::getInstance().GetSignalExitFlag()) {
